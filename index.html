@@ -386,18 +386,14 @@
     const mask = document.createElement('canvas');
     mask.width = dw; mask.height = dh;
     const mCtx = mask.getContext('2d');
-    mCtx.filter = 'blur(5px)';          // feather edges
     mCtx.drawImage(raw, 0, 0, dw, dh);
     return mask;
   }
 
-  // Blur entire background canvas
-  function blurPersonInBg(bgCv, srcCanvas, mask, vw, vh) {
-    const ctx = bgCv.getContext('2d');
-    ctx.clearRect(0, 0, vw, vh);
-    ctx.filter = 'blur(20px)';
-    ctx.drawImage(srcCanvas, 0, 0);
-    ctx.filter = 'none';
+  // Blur entire background via CSS（canvas 2D filterはiOS非対応のため）
+  function blurPersonInBg(bgCv) {
+    bgCv.style.filter    = 'blur(14px)';
+    bgCv.style.transform = 'scale(1.08)'; // ぼかしの端が暗くなるのを補正
   }
 
   // Build person-only canvas (background = transparent)
@@ -487,7 +483,9 @@
   // ── full reset ────────────────────────────────────────────────
   function resetAll() {
     video.style.opacity   = '1';
-    bgCanvas.style.display = 'none';
+    bgCanvas.style.display   = 'none';
+    bgCanvas.style.filter    = '';
+    bgCanvas.style.transform = '';
     trailCv.getContext('2d').clearRect(0, 0, trailCv.width, trailCv.height);
 
     for (const sl of [topSlice, botSlice]) {
@@ -628,7 +626,7 @@
           }, 38);
 
           animateSlash(cutY);
-          blurPersonInBg(bgCanvas, srcCanvas, null, vw, vh);
+          blurPersonInBg(bgCanvas);
 
           // split person halves
           setTimeout(() => {
