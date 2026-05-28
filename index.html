@@ -14,6 +14,7 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
+      height: 100dvh; /* スマホブラウザのアドレスバーを除いた高さ */
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
@@ -23,6 +24,7 @@
       width: 100vw;
       max-width: 430px;
       height: 100vh;
+      height: 100dvh;
       background: #111;
       overflow: hidden;
     }
@@ -31,7 +33,7 @@
     #viewfinder {
       position: absolute;
       top: 0; left: 0; right: 0;
-      bottom: 160px;
+      bottom: 110px;
       overflow: hidden;
       background: #000;
     }
@@ -141,23 +143,24 @@
     #controls {
       position: absolute;
       bottom: 0; left: 0; right: 0;
-      height: 160px;
+      height: 110px;
+      padding-bottom: env(safe-area-inset-bottom, 0px); /* iPhoneノッチ対応 */
       background: rgba(0,0,0,0.88);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 6px;
     }
 
     #shutter {
-      width: 74px; height: 74px;
+      width: 62px; height: 62px;
       border-radius: 50%;
       background: #fff;
       border: none;
       box-shadow:
-        0 0 0 5px rgba(255,255,255,0.2),
-        0 0 0 7px rgba(255,255,255,0.65);
+        0 0 0 4px rgba(255,255,255,0.2),
+        0 0 0 6px rgba(255,255,255,0.65);
       cursor: pointer;
       transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.3s ease;
       outline: none;
