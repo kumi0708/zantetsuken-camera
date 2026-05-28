@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>斬鉄剣カメラ</title>
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      max-width: 430px;
+      height: 100vh;
+      background: #111;
+      overflow: hidden;
+    }
+
+    /* ── Viewfinder ── */
+    #viewfinder {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      bottom: 160px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    /* background frozen frame (stays static during slash) */
+    #bg-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      display: none;
+      z-index: 4;
+    }
+
+    /* ── Slices ── */
+    .slice {
+      position: absolute;
+      left: 0; right: 0;
+      overflow: hidden;
+      display: none;
+      z-index: 6;
+      will-change: transform, opacity;
+    }
+    .slice canvas {
+      position: absolute;
+      left: 0;
+      display: block;
+    }
+
+    /* ── Trail canvas ── */
+    #trail-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9;
+    }
+
+    /* ── Slash canvas ── */
+    #slash-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 12;
+      opacity: 0;
+    }
+
+    /* ── Odin ── */
+    #odin {
+      position: absolute;
+      z-index: 10;
+      opacity: 0;
+      image-rendering: pixelated;
+      pointer-events: none;
+    }
+
+    /* ── Flash overlay ── */
+    #flash {
+      position: absolute;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.72);
+      color: rgba(255,220,100,0.95);
+      font-size: 15px;
+      letter-spacing: 0.12em;
+      padding: 10px 20px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,200,80,0.35);
+      z-index: 30;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+    }
+
+    /* ── Corner guides ── */
+    .corner {
+      position: absolute;
+      width: 20px; height: 20px;
+      border-color: rgba(255,255,255,0.65);
+      border-style: solid;
+      z-index: 2;
+    }
+    .corner.tl { top: 12px;  left: 12px;  border-width: 2px 0 0 2px; }
+    .corner.tr { top: 12px;  right: 12px; border-width: 2px 2px 0 0; }
+    .corner.bl { bottom: 12px; left: 12px;  border-width: 0 0 2px 2px; }
+    .corner.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+    /* ── Controls ── */
+    #controls {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 160px;
+      background: rgba(0,0,0,0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    #shutter {
+      width: 74px; height: 74px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow:
+        0 0 0 5px rgba(255,255,255,0.2),
+        0 0 0 7px rgba(255,255,255,0.65);
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.3s ease;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #shutter:active:not(:disabled) {
+      transform: scale(0.9);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.15), 0 0 0 5px rgba(255,255,255,0.45);
+    }
+    #shutter:disabled { opacity: 0.35; cursor: default; }
+
+    #cam-label {
+      color: rgba(255,255,255,0.45);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    #model-status {
+      color: rgba(255,200,80,0.7);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      min-height: 16px;
+      transition: opacity 0.4s ease;
+    }
+
+    /* ── FF6 ダイアログウィンドウ ── */
+    #moji-box {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 18;
+      opacity: 0;
+      pointer-events: none;
+      white-space: nowrap;
+
+      background: #08093a;
+      border: 3px solid #b8baee;
+      box-shadow:
+        0 0 0 1px #08093a,
+        0 0 0 5px #b8baee,
+        inset 0 0 0 1px #4044a8;
+      padding: 8px 28px 10px;
+      transition: opacity 0.35s ease;
+    }
+    #moji-box span {
+      font-family: 'DotGothic16', monospace;
+      font-size: 20px;
+      color: #ffffff;
+      letter-spacing: 0.22em;
+      text-shadow: 1px 1px 0 #000;
+    }
+
+    /* ── No camera ── */
+    #no-cam {
+      display: none;
+      position: absolute;
+      inset: 0;
+      color: rgba(255,255,255,0.45);
+      font-size: 13px;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      line-height: 2;
+      z-index: 3;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div id="viewfinder">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="bg-canvas"></canvas>
+    <div class="slice" id="top-slice"></div>
+    <div class="slice" id="bot-slice"></div>
+    <canvas id="trail-canvas"></canvas>
+    <canvas id="slash-canvas"></canvas>
+    <img id="odin" src="a-odin.gif" alt="">
+    <div id="moji-box"><span>ざんてつけん</span></div>
+    <div id="flash"></div>
+    <div id="toast"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div id="no-cam">カメラへのアクセスを<br>許可してください</div>
+  </div>
+
+  <div id="controls">
+    <span id="cam-label">斬鉄剣カメラ</span>
+    <button id="shutter" disabled></button>
+    <span id="model-status">斬鉄剣を研いでいる...</span>
+  </div>
+
+</div>
+
+<!-- TensorFlow.js + BodyPix -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0/dist/body-pix.min.js"></script>
+
+<script>
+(() => {
+  const video      = document.getElementById('video');
+  const bgCanvas   = document.getElementById('bg-canvas');
+  const topSlice   = document.getElementById('top-slice');
+  const botSlice   = document.getElementById('bot-slice');
+  const trailCv    = document.getElementById('trail-canvas');
+  const slashCv    = document.getElementById('slash-canvas');
+  const odin       = document.getElementById('odin');
+  const mojiBox    = document.getElementById('moji-box');
+  const flash      = document.getElementById('flash');
+  const shutter    = document.getElementById('shutter');
+  const toast      = document.getElementById('toast');
+  const modelSt    = document.getElementById('model-status');
+  const viewfinder = document.getElementById('viewfinder');
+  const noCam      = document.getElementById('no-cam');
+
+  let bpNet = null;
+  let busy  = false;
+
+  // ── helpers ──────────────────────────────────────────────────
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const easeIn  = t => t * t * t;
+
+  // ── toast ─────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, ms = 1600) {
+    clearTimeout(toastTimer);
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, ms);
+  }
+
+  // ── camera ───────────────────────────────────────────────────
+  async function initCamera() {
+    for (const c of [
+      { video: { facingMode: 'user' }, audio: false },
+      { video: true, audio: false },
+    ]) {
+      try {
+        video.srcObject = await navigator.mediaDevices.getUserMedia(c);
+        return;
+      } catch (_) {}
+    }
+    noCam.style.display = 'flex';
+    video.style.display = 'none';
+  }
+
+  // ── BodyPix load ─────────────────────────────────────────────
+  async function loadModel() {
+    try {
+      bpNet = await bodyPix.load({
+        architecture:    'MobileNetV1',
+        outputStride:    16,
+        multiplier:      0.75,
+        quantBytes:      2,
+      });
+      modelSt.style.opacity = '0';
+      setTimeout(() => { modelSt.textContent = ''; }, 400);
+      shutter.disabled = false;
+    } catch (e) {
+      modelSt.textContent = 'モデル読込失敗';
+      console.error(e);
+    }
+  }
+
+  // ── capture video frame → canvas (with mirror) ────────────────
+  function captureFrame(outCanvas) {
+    const vw = viewfinder.clientWidth;
+    const vh = viewfinder.clientHeight;
+    outCanvas.width  = vw;
+    outCanvas.height = vh;
+
+    const ctx = outCanvas.getContext('2d');
+    const natW = video.videoWidth  || vw;
+    const natH = video.videoHeight || vh;
+    const scale = Math.max(vw / natW, vh / natH);
+    const sw = vw / scale, sh = vh / scale;
+    const sx = (natW - sw) / 2, sy = (natH - sh) / 2;
+
+    ctx.save();
+    ctx.translate(vw, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, vw, vh);
+    ctx.restore();
+    return { vw, vh };
+  }
+
+  // ── person segmentation ───────────────────────────────────────
+  async function segmentPerson(srcCanvas) {
+    return await bpNet.segmentPerson(srcCanvas, {
+      flipHorizontal:       false, // already mirrored in captureFrame
+      internalResolution:   'medium',
+      segmentationThreshold: 0.5,
+      maxDetections:        5,
+      scoreThreshold:       0.3,
+    });
+  }
+
+  // Check pixel ratio of person
+  function personRatio(seg) {
+    let count = 0;
+    for (let i = 0; i < seg.data.length; i++) if (seg.data[i] === 1) count++;
+    return count / seg.data.length;
+  }
+
+  // Build a feathered mask canvas at display resolution
+  function buildMaskCanvas(seg, dw, dh) {
+    const raw = document.createElement('canvas');
+    raw.width = seg.width; raw.height = seg.height;
+    const rCtx = raw.getContext('2d');
+    const id = rCtx.createImageData(seg.width, seg.height);
+    for (let i = 0; i < seg.data.length; i++) {
+      const v = seg.data[i] === 1 ? 255 : 0;
+      id.data[i*4] = id.data[i*4+1] = id.data[i*4+2] = id.data[i*4+3] = v;
+    }
+    rCtx.putImageData(id, 0, 0);
+
+    const mask = document.createElement('canvas');
+    mask.width = dw; mask.height = dh;
+    const mCtx = mask.getContext('2d');
+    mCtx.filter = 'blur(5px)';          // feather edges
+    mCtx.drawImage(raw, 0, 0, dw, dh);
+    return mask;
+  }
+
+  // Blur entire background canvas
+  function blurPersonInBg(bgCv, srcCanvas, mask, vw, vh) {
+    const ctx = bgCv.getContext('2d');
+    ctx.clearRect(0, 0, vw, vh);
+    ctx.filter = 'blur(20px)';
+    ctx.drawImage(srcCanvas, 0, 0);
+    ctx.filter = 'none';
+  }
+
+  // Build person-only canvas (background = transparent)
+  function buildPersonCanvas(freezeCanvas, mask, vw, vh) {
+    const pc = document.createElement('canvas');
+    pc.width = vw; pc.height = vh;
+    const ctx = pc.getContext('2d');
+    ctx.drawImage(freezeCanvas, 0, 0);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(mask, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    return pc;
+  }
+
+  // ── build slices from person canvas ──────────────────────────
+  function buildSlices(personCanvas, vw, vh, cutY) {
+    function makeSlice(el, top, height, canvasOffsetY) {
+      el.innerHTML = '';
+      el.style.cssText = '';
+      el.style.display   = 'block';
+      el.style.top       = top + 'px';
+      el.style.height    = height + 'px';
+      el.style.opacity   = '1';
+      el.style.transform = 'translateY(0px)';
+      el.style.zIndex    = '6';
+
+      const cv = document.createElement('canvas');
+      cv.width  = vw;
+      cv.height = vh;
+      cv.style.cssText = `position:absolute;top:${canvasOffsetY}px;left:0;width:${vw}px;height:${vh}px;`;
+      cv.getContext('2d').drawImage(personCanvas, 0, 0);
+      el.appendChild(cv);
+    }
+
+    makeSlice(topSlice, 0,    cutY,      0);
+    makeSlice(botSlice, cutY, vh - cutY, -cutY);
+  }
+
+  // ── slash animation ───────────────────────────────────────────
+  async function animateSlash(cutY) {
+    const W = slashCv.offsetWidth;
+    const H = slashCv.offsetHeight;
+    slashCv.width  = W;
+    slashCv.height = H;
+    slashCv.style.opacity = '1';
+    const ctx = slashCv.getContext('2d');
+
+    const DURATION = 300;
+    const t0 = performance.now();
+    await new Promise(res => {
+      function draw(now) {
+        const p = Math.min((now - t0) / DURATION, 1);
+        const alpha = 1 - easeIn(p);
+        const bw = lerp(36, 3, p);
+
+        ctx.clearRect(0, 0, W, H);
+
+        // glow band
+        const grad = ctx.createLinearGradient(0, cutY - bw, 0, cutY + bw);
+        grad.addColorStop(0,   `rgba(255,255,200,0)`);
+        grad.addColorStop(0.4, `rgba(255,255,160,${alpha * 0.5})`);
+        grad.addColorStop(0.5, `rgba(255,255,255,${alpha})`);
+        grad.addColorStop(0.6, `rgba(255,255,160,${alpha * 0.5})`);
+        grad.addColorStop(1,   `rgba(255,255,200,0)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, cutY - bw, W, bw * 2);
+
+        // sharp core line (slight diagonal)
+        ctx.save();
+        ctx.shadowColor = '#fff';
+        ctx.shadowBlur  = 18;
+        ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0,   cutY - 2);
+        ctx.lineTo(W,   cutY + 2);
+        ctx.stroke();
+        ctx.restore();
+
+        if (p < 1) requestAnimationFrame(draw);
+        else { ctx.clearRect(0, 0, W, H); slashCv.style.opacity = '0'; res(); }
+      }
+      requestAnimationFrame(draw);
+    });
+  }
+
+  // ── full reset ────────────────────────────────────────────────
+  function resetAll() {
+    video.style.opacity   = '1';
+    bgCanvas.style.display = 'none';
+    trailCv.getContext('2d').clearRect(0, 0, trailCv.width, trailCv.height);
+
+    for (const sl of [topSlice, botSlice]) {
+      sl.style.display   = 'none';
+      sl.style.opacity   = '1';
+      sl.style.transform = 'translateY(0)';
+      sl.innerHTML = '';
+    }
+
+    odin.style.transition = 'none';
+    odin.style.opacity    = '0';
+    odin.style.transform  = 'translateX(0)';
+    mojiBox.style.opacity = '0';
+    flash.style.opacity   = '0';
+
+    busy = false;
+    shutter.disabled = false;
+  }
+
+  // ── main sequence ─────────────────────────────────────────────
+  async function zantetsuken() {
+    if (busy || !bpNet) return;
+    busy = true;
+    shutter.disabled = true;
+
+    // 1. shutter flash
+    flash.style.transition = 'none';
+    flash.style.opacity    = '0.9';
+    await wait(55);
+    flash.style.transition = 'opacity 0.35s ease';
+    flash.style.opacity    = '0';
+
+    // 2. capture frame into a temp canvas for segmentation
+    const srcCanvas = document.createElement('canvas');
+    const { vw, vh } = captureFrame(srcCanvas);
+
+    // 3. show frozen background (same image, display while processing)
+    bgCanvas.width  = vw;
+    bgCanvas.height = vh;
+    bgCanvas.getContext('2d').drawImage(srcCanvas, 0, 0);
+    bgCanvas.style.width   = vw + 'px';
+    bgCanvas.style.height  = vh + 'px';
+    bgCanvas.style.display = 'block';
+    video.style.opacity    = '0';
+
+    // 4. run segmentation
+    let seg;
+    try {
+      seg = await segmentPerson(srcCanvas);
+    } catch (e) {
+      console.error(e);
+      showToast('検出エラー');
+      resetAll();
+      return;
+    }
+
+    // 5. check if person is present
+    const ratio = personRatio(seg);
+    if (ratio < 0.03) {
+      // no person — quietly go back
+      showToast('斬れる者なし', 1400);
+      await wait(400);
+      resetAll();
+      return;
+    }
+
+    // 6. build person mask + person-only canvas
+    const mask        = buildMaskCanvas(seg, vw, vh);
+    const personCv    = buildPersonCanvas(srcCanvas, mask, vw, vh);
+
+    // 7. cut position (slightly above center for visual interest)
+    const cutY = Math.round(vh * 0.46);
+    buildSlices(personCv, vw, vh, cutY);
+
+    // 8. position Odin
+    const appW   = viewfinder.clientWidth;
+    const ODIN_W = Math.round(appW * 0.38);
+    odin.style.width = ODIN_W + 'px';
+    await new Promise(res => { odin.complete ? res() : (odin.onload = res); });
+    const odinH = Math.round(ODIN_W * (odin.naturalHeight / odin.naturalWidth));
+    odin.style.top       = (cutY - odinH * 0.52) + 'px';
+    odin.style.left      = '0';
+    odin.style.opacity   = '0';
+    odin.style.transform = `translateX(${appW + 60}px)`;
+
+    // 9. fade Odin + moji in
+    await wait(50);
+    odin.style.transition   = 'opacity 0.28s ease';
+    odin.style.opacity      = '1';
+    mojiBox.style.opacity   = '1';
+    await wait(300);
+    odin.style.transition = 'none';
+
+    // 10. slide Odin across
+    const startX   = appW + 60;
+    const endX     = -(ODIN_W + 60);
+    const DURATION = 1100;
+    let slashFired = false;
+
+    // trail setup
+    const trailCtx  = trailCv.getContext('2d');
+    const vfH       = viewfinder.clientHeight;
+    trailCv.width   = appW;
+    trailCv.height  = vfH;
+    const odinTopPx = parseFloat(odin.style.top);
+    const trailPos  = [];
+    const MAX_TRAIL = 10;
+
+    await new Promise(res => {
+      const t0 = performance.now();
+      function frame(now) {
+        const p = Math.min((now - t0) / DURATION, 1);
+        const x = lerp(startX, endX, easeOut(p));
+        odin.style.transform = `translateX(${x}px)`;
+        odin.style.transition = 'none';
+
+        // draw trailing ghosts
+        trailPos.push(x);
+        if (trailPos.length > MAX_TRAIL) trailPos.shift();
+        trailCtx.clearRect(0, 0, appW, vfH);
+        trailPos.forEach((tx, i) => {
+          trailCtx.globalAlpha = (i / MAX_TRAIL) * 0.45;
+          trailCtx.drawImage(odin, tx, odinTopPx, ODIN_W, odinH);
+        });
+        trailCtx.globalAlpha = 1;
+
+        const odinCenterX = x + ODIN_W / 2;
+
+        if (!slashFired && odinCenterX < appW * 0.58) {
+          slashFired = true;
+
+          // screen flash
+          flash.style.transition = 'none';
+          flash.style.opacity    = '0.72';
+          setTimeout(() => {
+            flash.style.transition = 'opacity 0.22s ease';
+            flash.style.opacity    = '0';
+          }, 38);
+
+          animateSlash(cutY);
+          blurPersonInBg(bgCanvas, srcCanvas, null, vw, vh);
+
+          // split person halves
+          setTimeout(() => {
+            const DUR  = '0.55s';
+            const EASE = 'cubic-bezier(0.22,0.61,0.36,1)';
+            topSlice.style.transition = `transform ${DUR} ${EASE}`;
+            botSlice.style.transition = `transform ${DUR} ${EASE}`;
+            topSlice.style.transform  = 'translateX(-110px)';
+            botSlice.style.transform  = 'translateX(110px)';
+          }, 70);
+        }
+
+        if (p < 1) requestAnimationFrame(frame);
+        else res();
+      }
+      requestAnimationFrame(frame);
+    });
+
+    // 11. hold
+    await wait(750);
+
+    // 12. fade out
+    const FADE = '0.5s ease';
+    topSlice.style.transition = `opacity ${FADE}, transform ${FADE}`;
+    botSlice.style.transition = `opacity ${FADE}, transform ${FADE}`;
+    topSlice.style.opacity    = '0';
+    botSlice.style.opacity    = '0';
+    topSlice.style.transform  = 'translateX(-200px)';
+    botSlice.style.transform  = 'translateX(200px)';
+    odin.style.transition     = 'opacity 0.4s ease';
+    odin.style.opacity        = '0';
+    mojiBox.style.opacity     = '0';
+
+    await wait(550);
+    resetAll();
+  }
+
+  shutter.addEventListener('click', zantetsuken);
+  initCamera();
+  loadModel();
+})();
+</script>
+</body>
+</html>
