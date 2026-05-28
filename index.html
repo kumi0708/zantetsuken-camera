@@ -14,7 +14,7 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
-      height: 100dvh; /* スマホブラウザのアドレスバーを除いた高さ */
+      height: var(--app-h, 100svh);
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
@@ -24,7 +24,7 @@
       width: 100vw;
       max-width: 430px;
       height: 100vh;
-      height: 100dvh;
+      height: var(--app-h, 100svh);
       background: #111;
       overflow: hidden;
     }
@@ -665,6 +665,13 @@
     await wait(550);
     resetAll();
   }
+
+  // ── 実際の表示高さをCSS変数に反映（Safari下ツールバー対策）──
+  function fixHeight() {
+    document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
+  }
+  fixHeight();
+  window.addEventListener('resize', fixHeight);
 
   shutter.addEventListener('click', zantetsuken);
   initCamera();
