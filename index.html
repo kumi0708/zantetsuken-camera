@@ -55,6 +55,19 @@
       z-index: 4;
     }
 
+    /* ブラーオーバーレイ（backdrop-filterでbg-canvasをぼかす） */
+    #blur-overlay {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      -webkit-backdrop-filter: blur(14px) brightness(0.88);
+      backdrop-filter: blur(14px) brightness(0.88);
+      z-index: 5;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+
     /* ── Slices ── */
     .slice {
       position: absolute;
@@ -238,6 +251,7 @@
     <canvas id="bg-canvas"></canvas>
     <div class="slice" id="top-slice"></div>
     <div class="slice" id="bot-slice"></div>
+    <div id="blur-overlay"></div>
     <canvas id="trail-canvas"></canvas>
     <canvas id="slash-canvas"></canvas>
     <img id="odin" src="a-odin.gif" alt="">
@@ -269,6 +283,7 @@
   const bgCanvas   = document.getElementById('bg-canvas');
   const topSlice   = document.getElementById('top-slice');
   const botSlice   = document.getElementById('bot-slice');
+  const blurOverlay = document.getElementById('blur-overlay');
   const trailCv    = document.getElementById('trail-canvas');
   const slashCv    = document.getElementById('slash-canvas');
   const odin       = document.getElementById('odin');
@@ -390,10 +405,9 @@
     return mask;
   }
 
-  // Blur entire background via CSS（canvas 2D filterはiOS非対応のため）
-  function blurPersonInBg(bgCv) {
-    bgCv.style.filter    = 'blur(14px)';
-    bgCv.style.transform = 'scale(1.08)'; // ぼかしの端が暗くなるのを補正
+  // backdrop-filterでbg-canvasをぼかす（iOS Chrome/Safari互換）
+  function blurPersonInBg() {
+    blurOverlay.style.opacity = '1';
   }
 
   // Build person-only canvas (background = transparent)
@@ -483,9 +497,8 @@
   // ── full reset ────────────────────────────────────────────────
   function resetAll() {
     video.style.opacity   = '1';
-    bgCanvas.style.display   = 'none';
-    bgCanvas.style.filter    = '';
-    bgCanvas.style.transform = '';
+    bgCanvas.style.display    = 'none';
+    blurOverlay.style.opacity = '0';
     trailCv.getContext('2d').clearRect(0, 0, trailCv.width, trailCv.height);
 
     for (const sl of [topSlice, botSlice]) {
@@ -626,7 +639,7 @@
           }, 38);
 
           animateSlash(cutY);
-          blurPersonInBg(bgCanvas);
+          blurPersonInBg();
 
           // split person halves
           setTimeout(() => {
